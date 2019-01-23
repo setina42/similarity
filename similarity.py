@@ -189,12 +189,12 @@ def _plot(dis):
 
 #TODO: parameterize thresh_percentile and absolute threshold (???)
 #TODO: maybe use the same cut coords for all plots, may prove difficult bc not possbile to use nilearns func directly
-def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',path_to_genes="usr/share/ABI-expression-data"):
+def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
 	# TODO: put into stat3D or stat, to avoid loading the data twice threshold = fast_abs_percentile(stat_map)
 	dis = dict()
 	img_s = nibabel.load(stat_map)
 	img_data_s = img_s.get_fdata()
-	tresh_s = fast_abs_percentile(img_data_s[img_data_s >0],percentile=94)
+	tresh_s = fast_abs_percentile(img_data_s[img_data_s >0],percentile=percentile_threshold)
 	print(tresh_s)
 	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,pos_values=True,figure_title="stat")
 	dis["main"] = display_stat
@@ -236,7 +236,7 @@ def output_results(results,hits = 3,output_name=None):
 
 	return
 #TODO: sorted results: same score, sorting?? warning
-def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean'):
+def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94):
 	"""
 	master blabla
 	"""
@@ -316,8 +316,24 @@ def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-exp
 
 	return results
 
+def normalize_image(img_path):
+	#TODO: I dont want -1 for no data to be considered as the minimum, and probably not zero either?
+	img = nibabel.load(imgpath)
+	img_data = img.get_fdata()
+	img_min = np.min(img_data)
+	img_max = np.max(img_data)
 
-def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200):
+	img_normalized = np.divide(np.subtract(img,img_min),(img_max - img_min))
+
+	img_out = str.split(img_path,'.nii')[0] + '_norm.nii.gz'
+	img_mask = nibabel.Nifti1Image(img_data,img.affine)
+	nibabel.save(img_mask,img_out)
+
+	return img_out
+
+#TODO: for connectivity data, it would be really cool if the injection site could be indicated in the plot. Cou can sort of see it with the highest values beeing the inj s
+#   , but bdb§
+def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200,percentile_threshold=94):
 	#TODO: mirror sagittal for connectivity??
 	mask_map = create_mask(stat_map,0)
 	results = defaultdict(list)
@@ -334,8 +350,10 @@ def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connect
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
 	print(sorted_results)
 	output_results(sorted_results,hits = 3)
-	plot_results(stat_map,sorted_results,hits=3)
+	plot_results(stat_map,sorted_results,hits=3,percentile_threshold=percentile_theshold)
 
+
+#TODO: paramterize clean up (delete mirrored, mask files etc if wanted to save space, or keep for faster calculations next time)
 def main():
 
 	parser = argparse.ArgumentParser(description="Similarity",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -345,6 +363,7 @@ def main():
 	parser.add_argument('--radius_or_number_of_bins','-r',type=int,default = 64)
 	parser.add_argument('--metric','-m',type=str,default='MI')
 	parser.add_argument('--strategy','-y',type=str, default='max')
+	parser.add_argument('--percentile_treshold','-p',type=int,default=94)
 	args=parser.parse_args()
 	#img = "/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz"
 	img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
@@ -354,7 +373,7 @@ def main():
 #	measure_similarity_geneexpression("/home/gentoo/ABI_data_full/data/Tlx2/Tlx2_P56_sagittal_81655554_200um/Tlx2_P56_sagittal_81655554_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
-	measure_similarity_geneexpression(img,metric='MI')
+	measure_similarity_geneexpression(img,metric='MI',percentile_threshold=args.percentile_threshold)
 
 
 #	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
