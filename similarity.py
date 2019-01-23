@@ -75,6 +75,101 @@ def mirror_sagittal(image):
 
 	return path_to_mirrored
 
+
+def flip(image):
+	"""
+	Sagittal datasets form Allen mouse brain are only collected for the right/left? hemisphere.
+	Function to mirror feature map at midline and saving image as nifti-file.
+	"""
+	img = nibabel.load(image)
+	img_data = img.get_fdata()
+
+	#find coordinates of origin (Bregma?) in data matrix to determine the left-right midline
+	origin = transform(0,0,0,img.affine)
+	mid = int(origin[0])
+
+	#TODO:midline point at 31.34, how to mirror properly
+
+	#Copy image right/left(?) from the mid, but keep mid unchanged
+
+	left_side = np.copy(img_data[(mid + 1):,:,: ])
+	left_side = np.flip(left_side,0)
+
+	right_side = np.copy(img_data[0:mid,:,:])
+	right_side = np.flip(right_side,0)
+#TODO: checkec for case 3, test for other cases as well
+	#replace
+	if np.shape(left_side)[0] > np.shape(img_data[0:mid,:,:])[0]:
+#		print("case 1")
+		#case 1: origin slightly to the left (or right??), need to trim left_side to the size of the right side
+		replace_value = np.shape(left_side)[0] - np.shape(img_data[0:mid,:,:])[0]
+		img_data[0:mid,:,:] = left_side[(replace_value-1):,:,:]
+		#np.savetxt("Slice_case1.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
+		img_data[mid:np.shape(right_side[0]),:,:] = right_side[:,:,:]
+
+	elif np.shape(left_side)[0] < np.shape(img_data[0:mid,:,:])[0]:
+#		print("case 2")
+		#case 2 : origin slightly to the right (or left??), need to
+		replace_value = np.shape(img_data[0:mid,:,:])[0] - np.shape(left_side)[0]
+		img_data[replace_value:mid,:,:] = left_side
+		#np.savetxt("Slice_case2.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
+
+		img_data[mid:,:,:]= right_side[0:np.shape(img_data[mid:,:,:]),:,:][img_data[mid:,:,:]]
+	else:
+#		print("case 3")
+		#case 3: same size
+		#TODO: -1 or 0??
+		#TODO: There's got to be a better way to write this....  -> a_slice notation:: a[10:16] is a reference, not a copy!
+		img_data[0:mid,:,:] = left_side
+		#np.savetxt("Slice_case3.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
+		img_data[mid+1:,:,:] = right_side
+
+	img_average = nibabel.Nifti1Image(img_data,img.affine)
+	filename = str.split(os.path.basename(image),'.nii')[0] + '_flipped.nii.gz'
+	path_to_flipped = os.path.join(os.path.dirname(image),filename)
+	nibabel.save(img_average,path_to_flipped)
+
+	return path_to_flipped
+
+
+#TODO: maybe merge with the creaton of the other mask, as in if mask_brain_half == True...sth)
+def mask_brain_half(image,side="left"):
+	"""
+	Sagittal datasets form Allen mouse brain are only collected for the right/left? hemisphere.
+	Function to mirror feature map at midline and saving image as nifti-file.
+	"""
+	img = nibabel.load(image)
+	img_data = img.get_fdata()
+
+	#find coordinates of origin (Bregma?) in data matrix to determine the left-right midline
+	origin = transform(0,0,0,img.affine)
+	mid = int(origin[0])
+
+	#TODO:midline point at 31.34, how to mirror properly
+
+	#Copy image right/left(?) from the mid, but keep mid unchanged
+
+	left_side = img_data[(mid + 1):,:,: ]
+
+	right_side = img_data[0:mid,:,:]
+
+	img_data[np.logical_and(img_data > threshold,atlas_mask == 1)] = 1
+	img_data[np.logical_or(img_data <= threshold,atlas_mask==0)] = 0
+	img_out = str.split(image,'.nii')[0] + '_mask.nii.gz'
+	img_mask = nibabel.Nifti1Image(img_data,img.affine)
+	nibabel.save(img_mask,img_out)
+
+
+	img_average = nibabel.Nifti1Image(img_data,img.affine)
+	filename = str.split(os.path.basename(image),'.nii')[0] + '_mirrored.nii.gz'
+	path_to_flipped = os.path.join(os.path.dirname(image),filename)
+	nibabel.save(img_average,path_to_flipped)
+
+	return path_to_flipped
+
+
+
+
 def create_mask(image,threshold):
 	#I think i need 0 to be in my mask. This seems not to be possible using fslmaths, so maybe do directly with numpy? thr sets all to zero below the value and bin uses image>0 to binarise.
 	#mask = fsl.Threshold()
@@ -165,7 +260,7 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 	return res
 
 
-def _plot(dis):
+def _plot(dis,stat_map,vs):
 	fig = plt.figure()
 	main = fig.add_axes([0,0,0.6,1.0])
 	ax_1=fig.add_axes([0.6,0,0.4,0.3])
@@ -181,26 +276,30 @@ def _plot(dis):
 		ax.spines["right"].set_visible(False)
 		ax.spines["left"].set_visible(False)
 
+	fig_name_prefix = os.path.basename(stat_map) + "_vs_" + vs
+
+
+#TODO:this temp save fig with the same file name is an issue if i let scirpt run parallel
 	main.imshow(plt.imread("_stat.png"))
 	ax_1.imshow(plt.imread("0.png"))
 	ax_2.imshow(plt.imread("1.png"))
 	ax_3.imshow(plt.imread("2.png"))
-	plt.savefig("all.png",dpi=600)
+	plt.savefig(fig_name_prefix + "_all.png",dpi=600)
 
 #TODO: parameterize thresh_percentile and absolute threshold (???)
 #TODO: maybe use the same cut coords for all plots, may prove difficult bc not possbile to use nilearns func directly
-def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
+def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',vs = "expression",path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
 	# TODO: put into stat3D or stat, to avoid loading the data twice threshold = fast_abs_percentile(stat_map)
 	dis = dict()
 	img_s = nibabel.load(stat_map)
 	img_data_s = img_s.get_fdata()
 	tresh_s = fast_abs_percentile(img_data_s[img_data_s >0],percentile=percentile_threshold)
 	print(tresh_s)
-	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,pos_values=True,figure_title="stat")
+	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,pos_values=True,figure_title=os.path.basename(stat_map))
 	dis["main"] = display_stat
 	for i in range(0,hits):
 		gene_name = results[i][0].split("_")[0] #TODO:this should work in both cases (also for connectivity??)
-		full_path_to_gene = results[i][1][1]
+		full_path_to_gene = results[i][1][1]  #TODO what ??????
 		print("now plotting: ")
 		print(full_path_to_gene)
 		img = nibabel.load(full_path_to_gene)
@@ -208,7 +307,7 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 		tresh = fast_abs_percentile(img_data[img_data > 0],percentile=98)
 		display = maps.stat3D(full_path_to_gene,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as=str(i) + '.png',threshold=tresh,pos_values=True,figure_title=gene_name)
 		dis[str(i)] = display
-	_plot(dis)
+	_plot(dis,stat_map,vs)
 	print(tresh_s)
 	print(tresh)
 	#TODO:sep.function?
@@ -236,7 +335,7 @@ def output_results(results,hits = 3,output_name=None):
 
 	return
 #TODO: sorted results: same score, sorting?? warning
-def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94):
+def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94,mirror=True,flip=False):
 	"""
 	master blabla
 	"""
@@ -246,6 +345,8 @@ def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-exp
 	#TODO: create a mask for the stat map? or userprovided? or both possible? Or use a single mask. Also, if yes, include threshold in mask func
 	mask_map = create_mask(stat_map,0)
 	#results = dict()
+	if "sagittal" in stat_map and mirror == True: stat_map = mirror_sagittal(stat_map)
+	print(stat_map)
 	results = defaultdict(list)
 	#loop through all gene folders, either get data form single experiment or get combined data.
 	if comparison == 'gene':
@@ -259,7 +360,7 @@ def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-exp
 					img = []
 					imgs = glob.glob(path + '/*/*_2dsurqec.nii.gz')
 					for img_gene in imgs:
-						if "sagittal" in img_gene:
+						if "sagittal" in img_gene and mirror == True:
 							 img.append(mirror_sagittal(img_gene))
 						else:
 							img.append(img_gene)
@@ -311,8 +412,8 @@ def measure_similarity_geneexpression(stat_map,path_to_genes="/usr/share/ABI-exp
 #	print(sorted_results[4][1][0]) #similarity score
 #	print(sorted_results[4][1][1]) #path
 
-	output_results(sorted_results, hits = 3)
-	plot_results(stat_map,sorted_results,hits=3)
+	output_results(sorted_results,output_name="expression", hits = 3)
+	plot_results(stat_map,sorted_results,vs="expression",hits=3)
 
 	return results
 
@@ -332,9 +433,11 @@ def normalize_image(img_path):
 	return img_out
 
 #TODO: for connectivity data, it would be really cool if the injection site could be indicated in the plot. Cou can sort of see it with the highest values beeing the inj s
-#   , but bdb§
+#   , but bdb
+
+#TODO:masking of 0? Not really, right?§
 def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200,percentile_threshold=94):
-	#TODO: mirror sagittal for connectivity??
+	#TODO: mirror sagittal for connectivity?? If stat_map is a sagittal gene, mirror it (maybe do so before)
 	mask_map = create_mask(stat_map,0)
 	results = defaultdict(list)
 	for dir in os.listdir(path_to_exp):
@@ -349,8 +452,8 @@ def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connect
 		results[dir].append(img)  #path for plotting
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
 	print(sorted_results)
-	output_results(sorted_results,hits = 3)
-	plot_results(stat_map,sorted_results,hits=3,percentile_threshold=percentile_theshold)
+	output_results(sorted_results,hits = 3,output_name=os.path.basename(stat_map)+ "_connectivity")
+	plot_results(stat_map,sorted_results,hits=3,vs="connectivity")
 
 
 #TODO: paramterize clean up (delete mirrored, mask files etc if wanted to save space, or keep for faster calculations next time)
@@ -363,30 +466,32 @@ def main():
 	parser.add_argument('--radius_or_number_of_bins','-r',type=int,default = 64)
 	parser.add_argument('--metric','-m',type=str,default='MI')
 	parser.add_argument('--strategy','-y',type=str, default='max')
-	parser.add_argument('--percentile_treshold','-p',type=int,default=94)
+	parser.add_argument('--percentile_treshold','-t',type=int,default=94)
 	args=parser.parse_args()
-	#img = "/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz"
-	img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
+	img = "/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz"
+	#img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
 # res = ants_measure_similarity("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz","/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um//Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
 	#	print(res)
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/save_small_dataset/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene')
-#	measure_similarity_geneexpression("/home/gentoo/ABI_data_full/data/Tlx2/Tlx2_P56_sagittal_81655554_200um/Tlx2_P56_sagittal_81655554_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/save_small_dataset/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene')
+#	measure_similarity_expression("/home/gentoo/ABI_data_full/data/Tlx2/Tlx2_P56_sagittal_81655554_200um/Tlx2_P56_sagittal_81655554_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
-	measure_similarity_geneexpression(img,metric='MI',percentile_threshold=args.percentile_threshold)
+	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
+
+	bla = flip(img)
+	print(bla)
+	print(img)
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
 
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'CC',radius_or_number_of_bins = 4)
 
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'Mattes',radius_or_number_of_bins = 32)
 
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'CC',radius_or_number_of_bins = 4)
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MeanSquares',radius_or_number_of_bins = 64)
 
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'Mattes',radius_or_number_of_bins = 32)
-
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MeanSquares',radius_or_number_of_bins = 64)
-
-#	measure_similarity_geneexpression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
+#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
 #	create_mask(img)
 
 if __name__ == "__main__":
