@@ -116,6 +116,7 @@ def get_energy_density(id):
 
 
 def check_expression_level_dataset(imgs):
+	#TODO:what to do about 2 datasets??
 	en = dict()
 	dens = dict()
 	surviving_imgs = list()
@@ -126,18 +127,36 @@ def check_expression_level_dataset(imgs):
 		en[id] = energy
 		dens[id] = density
 	res = list(en.values())
-	cut_off = np.mean(res) - np.std(res)
-	for key_id in en:
-		if en[key_id] >= cut_off:
-			index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
-			sur = imgs[index]
-			surviving_imgs.append(sur)
+	if len(imgs) > 2:
+		cut_off = np.mean(res) - np.std(res)
+		for key_id in en:
+			if en[key_id] >= cut_off:
+				index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
+				sur = imgs[index]
+				surviving_imgs.append(sur)
+			else:
+				index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
+				sur = imgs[index]
+				kicked_out.append(sur)
+	else:
+		arbitrary_cut_off = 0.5
+		if (abs(res[0] - res[1]) > 1) and (min(res) < arbitrary_cut_off):
+			
+			for key_id in en:
+				if en[key_id] < arbitrary_cut_off:
+					index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
+					sur = imgs[index]
+					kicked_out.append(sur)
+					
+				else:
+					index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
+					sur = imgs[index]
+					surviving_imgs.append(sur)
 		else:
-			index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
-			sur = imgs[index]
-			kicked_out.append(sur)
-			print("kicked out:")
-			print(sur)
+			surviving_imgs.append(imgs[0])
+			surviving_imgs.append(imgs[1])
+
+
 	return surviving_imgs
 
 
@@ -153,7 +172,6 @@ def create_experiment_average(imgs,strategy='max'):
 
 	#only one surviving dataset
 	if len(imgs) == 1 : 
-		print("only one dataset left, no average")
 		return imgs[0]
 
 	img_data = []
@@ -303,7 +321,6 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 	if comparison == 'gene':
 		for dir in os.listdir(path_to_genes):
 			path = os.path.join(path_to_genes,dir)
-			print(dir)
 			if not os.path.isdir(path):continue
 			#print(path)
 			#multiple experiment data available per gene
@@ -328,8 +345,6 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 			#TODO: catch unexpected errors as to not interrupt program, print genename
 			mask_gene = create_mask(img_gene,-1)
 			similarity = ants_measure_similarity(stat_map,img_gene,mask_gene = mask_gene,mask_map=mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
-			print(dir)
-			print(similarity)
 			results[dir].append(similarity)
 			results[dir].append(img_gene)
 
@@ -391,21 +406,15 @@ def normalize_image(img_path):
 def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200,percentile_threshold=94):
 	#TODO: mirror sagittal for connectivity?? If stat_map is a sagittal gene, mirror it (maybe do so before)
 	mask_map = create_mask(stat_map,-1)
-	print("mask_map")
-	print(mask_map)
 	results = defaultdict(list)
 	for dir in os.listdir(path_to_exp):
 		path = os.path.join(path_to_exp,dir)
-		print(path)
 		img = glob.glob(path + '/*' + str(resolution) + '*_2dsurqec.nii*')[0]
-		print(img)
-		print(len(glob.glob(path + '/*' + str(resolution) + '*_2dsurqec.nii*')))
 		mask_gene = create_mask(img,-1)
 		similarity = ants_measure_similarity(stat_map,img,mask_gene = mask_gene,mask_map =mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
 		results[dir].append(similarity)
 		results[dir].append(img)  #path for plotting
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	print(sorted_results)
 	output_results(sorted_results,hits = 3,output_name=os.path.basename(stat_map)+ "_connectivity")
 	plot_results(stat_map,sorted_results,hits=3,vs="connectivity")
 
