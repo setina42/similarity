@@ -6,6 +6,8 @@ import urllib.request
 from collections import defaultdict
 import argparse
 
+#TODO:get complete list (currently 2000 results)
+
 def get_correlation(id):
    """Queries the ABI API for an expression summary for structure-id = 997 (the entire brain) and returns
    expression density, expression energy. Used to filter out datasets that barely measure any expression.
