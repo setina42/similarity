@@ -12,6 +12,9 @@ import samri.plotting.maps as maps
 from collections import defaultdict
 from nilearn._utils.extmath import fast_abs_percentile
 import pandas as pd
+#from nistats.reporting import compare_niimgs
+from scipy.stats import ttest_1samp
+
 
 def transform(x,y,z,affine):
 	M = affine[:4, :4]
@@ -229,6 +232,10 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 	return res
 
 
+def nistats_compare(ref_img,src_img):
+	res = compare_niimgs([ref_img],[src_img],plot_hist=False)
+	return res
+
 def _plot(dis,stat_map,vs):
 	fig = plt.figure()
 	main = fig.add_axes([0,0,0.6,1.0])
@@ -285,6 +292,23 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 
 	return
 
+
+def calculate_significance(results):
+
+	all_scores = list()
+	for score in results.values():
+		all_scores.append(score[0])
+	all_scores = np.asarray(all_scores)
+
+	#get significance scores for results
+	for id in results.keys():
+		t,prob = ttest_1samp(all_scores,results[id][0])
+		results[id].append(t)
+		results[id].append(prob)
+
+	return results
+
+
 def output_results(results,hits = 3,output_name=None):
 
 	print("Top " + str(hits) + " hits: ")
@@ -310,7 +334,7 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 	"""
 
 	#TODO: if mirrored or mask files are already present, don't make them again
-	#TODO:
+#TODO:
 	#TODO: create a mask for the stat map? or userprovided? or both possible? Or use a single mask. Also, if yes, include threshold in mask func
 	#trehshold of -1 is good for the ABI-data, probably not the stat map
 	mask_map = create_mask(stat_map,-1)
@@ -345,6 +369,9 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 			#TODO: catch unexpected errors as to not interrupt program, print genename
 			mask_gene = create_mask(img_gene,-1)
 			similarity = ants_measure_similarity(stat_map,img_gene,mask_gene = mask_gene,mask_map=mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
+			#similarity = nistats_compare(stat_map,img_gene)
+			print(stat_map,img_gene)
+			print(str(similarity))
 			results[dir].append(similarity)
 			results[dir].append(img_gene)
 
@@ -372,12 +399,16 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 
 	#TODO: if metric = MSE, sort other way round
 	#sort results:
+
+	results = calculate_significance(results)
+
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
+	print(sorted_results)
 #	print(sorted_results[4]) #5th highest result
 #	print(sorted_results[4][0]) #key = gene or exp_id
 #	print(sorted_results[4][1][0]) #similarity score
 #	print(sorted_results[4][1][1]) #path
-
+	#results_with_significance = calculate_significance(sorted_results)
 	output_results(sorted_results,output_name="expression", hits = 3)
 	plot_results(stat_map,sorted_results,vs="expression",hits=3)
 
@@ -400,6 +431,7 @@ def normalize_image(img_path):
 	return img_out
 
 #TODO: for connectivity data, it would be really cool if the injection site could be indicated in the plot. Cou can sort of see it with the highest values beeing the inj s
+
 #   , but bdb
 
 #TODO:check if I ever have two experiment files!!
@@ -433,9 +465,9 @@ def main():
 	args=parser.parse_args()
 	img = "/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz"
 
-	imgs = glob.glob("/usr/share/ABI-expression-data/Mef2c/*/*2dsurqec.nii.gz")
-	print(imgs)
-	check_expression_level_dataset(imgs)
+	#iimgs = glob.glob("/usr/share/ABI-expression-data/Mef2c/*/*2dsurqec.nii.gz")
+	#print(imgs)
+	#check_expression_level_dataset(imgs)
 #img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
 # res = ants_measure_similarity("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz","/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um//Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
 	#	print(res)
@@ -445,7 +477,7 @@ def main():
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
 	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
 
-#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
+	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
 
 
 
