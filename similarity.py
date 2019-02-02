@@ -14,7 +14,7 @@ from nilearn._utils.extmath import fast_abs_percentile
 import pandas as pd
 #from nistats.reporting import compare_niimgs
 from scipy.stats import ttest_1samp
-
+from mne.stats import permutation_t_test
 
 def transform(x,y,z,affine):
 	M = affine[:4, :4]
@@ -125,7 +125,8 @@ def check_expression_level_dataset(imgs):
 	surviving_imgs = list()
 	kicked_out = list()
 	for img in imgs:
-		id = int(img.split("_")[3])
+		img_base = os.path.basename(img)
+		id = int(img_base.split("_")[3])
 		energy,density = get_energy_density(id)
 		en[id] = energy
 		dens[id] = density
@@ -198,7 +199,7 @@ def create_experiment_average(imgs,strategy='max'):
 		average_img = np.nanmean([*img_data],axis=0)
 		average_img[np.isnan(average_img)] = -1
 
-	filename = str.split(os.path.basename(imgs[0]),"_")[0] + "_experiments_average.nii.gz"
+	filename = str.split(os.path.basename(imgs[0]),"_")[0] + "_experiments_" + strategy + "_average.nii.gz"
 	path_to_exp_average = os.path.join(os.path.dirname(imgs[0]),"..")
 	path_to_exp_average = os.path.join(path_to_exp_average,filename)
 	img_average = nibabel.Nifti1Image(average_img,img[0].affine)
@@ -293,8 +294,8 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 	return
 
 
-def calculate_significance(results):
-
+def calculate_significance_save(results):
+	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
 	all_scores = list()
 	for score in results.values():
 		all_scores.append(score[0])
@@ -306,7 +307,33 @@ def calculate_significance(results):
 		results[id].append(t)
 		results[id].append(prob)
 
-	return results
+		cohens = (np.mean(all_scores) - results[id][0]) / np.std(all_scores)
+		results[id].append(cohens)
+	
+	for i in range(0,len(sorted_results)-1):
+		score_1 = sorted_results[i][1][0]
+		score_2 = sorted_results[i+1][1][0]
+		diff_score = abs(score_1 - score_2)
+		sorted_results[i][1].append(diff_score)
+
+
+
+
+	return results,sorted_results
+
+
+
+
+def calculate_significance(results):
+	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
+
+	for i in range(0,len(sorted_results)-1):
+		score_1 = sorted_results[i][1][0]
+		score_2 = sorted_results[i+1][1][0]
+		diff_score = abs(score_1 - score_2)
+		sorted_results[i][1].append(diff_score)
+
+	return results,sorted_results
 
 
 def output_results(results,hits = 3,output_name=None):
@@ -400,17 +427,17 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 	#TODO: if metric = MSE, sort other way round
 	#sort results:
 
-	results = calculate_significance(results)
+	#results,sort = calculate_significance(results)
 
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	print(sorted_results)
+	#print(sorted_results)
 #	print(sorted_results[4]) #5th highest result
 #	print(sorted_results[4][0]) #key = gene or exp_id
 #	print(sorted_results[4][1][0]) #similarity score
 #	print(sorted_results[4][1][1]) #path
 	#results_with_significance = calculate_significance(sorted_results)
-	output_results(sorted_results,output_name="expression", hits = 3)
-	plot_results(stat_map,sorted_results,vs="expression",hits=3)
+	output_results(sorted_results,output_name="expression" + os.path.basename(stat_map), hits = 3)
+	#plot_results(stat_map,sorted_results,vs="expression",hits=3)
 
 	return results
 
@@ -447,7 +474,7 @@ def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connect
 		results[dir].append(similarity)
 		results[dir].append(img)  #path for plotting
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	output_results(sorted_results,hits = 3,output_name=os.path.basename(stat_map)+ "_connectivity")
+	output_results(sorted_results,hits = 3,output_name=(os.path.basename(stat_map)+ "_connectivity"))
 	plot_results(stat_map,sorted_results,hits=3,vs="connectivity")
 
 
@@ -477,8 +504,8 @@ def main():
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
 	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
 
-	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
-
+#	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
+	measure_similarity_expression(img,path_to_genes="small_dataset_exp")
 
 
 #	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'CC',radius_or_number_of_bins = 4)
