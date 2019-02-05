@@ -4,7 +4,7 @@ import pandas
 from scipy.stats import kendalltau, spearmanr,weightedtau, spearmanr,wilcoxon
 import scipy
 from math import sqrt
-
+import matplotlib.pyplot as plt
 
 #for expression lsits
 def read_list(path,rows):
@@ -203,7 +203,7 @@ def overlap(a,b):
 #cor,p = weightedtau(score_max,score_mean)
 #print("weighted tau")
 #print(cor)
-count = 2000
+count = 15
 #print(experiment,mean,max, abi)
 #experiment = read_list("/home/gentoo/src/similarity/test_strategies/ex_vs_ex_experiment/expression.csv",count)
 mean = read_list("/home/gentoo/src/similarity/test_strategies/ex_vs_ex_gene_mean/expression.csv",count)
@@ -212,11 +212,11 @@ abi = read_list2("ABI-correlation-Znfx1-69524632.csv",count + 1)
 
 MI_exp = read_list("/home/gentoo/src/thesis/data/MI_Znfx1_69524632_similarity_results_experiment.csv.csv",count)
 GC_exp = read_list("/home/gentoo/src/thesis/data/GC_Znfx1_69524632_similarity_results_experiment.csv.csv",count)
-#MS_exp = read_list("/home/gentoo/src/thesis/data/MI_Znfx1_69524632_similarity_results_experiment.csv.csv",count)
-   
+MS_exp = read_list("/home/gentoo/src/thesis/data/MeanSquares_Znfx1_69524632_similarity_results_experiment.csv.csv",count)
+
 MI_exp_raw_no_mask = read_list("/home/gentoo/src/similarity/metrics_raw/expression_raw_nomask_MI_Znfx1.csv",count)
-#MI_exp_raw_with_mask = read_list(""),count
-   
+MI_exp_raw_mask = read_list("/home/gentoo/src/similarity/metrics_raw/expression_raw_withmask_MI_Znfx1.csv",count)
+
 pears = read_list3("/home/gentoo/src/similarity/pearson_corr/expressionZnfx1_P56_sagittal_69524632_200um_2dsurqec_mirrored.nii.gz.csv",count)
 pears_raw = read_list3("/home/gentoo/src/similarity/pearson_raw/expressionZnfx1_P56_sagittal_69524632_200um_2dsurqec.nii.gz.csv",count)
 print("MI_exp")
@@ -237,8 +237,13 @@ print("MI_exp_raw_no_mask")
 print(MI_exp_raw_no_mask )
 
 
-all = [mean,max,abi,MI_exp,GC_exp,pears,pears_raw,MI_exp_raw_no_mask]
-names = ["mean","max","abi","MI_exp","GC_exp","pears","pears_raw","MI_exp_raw_no_mask"]
+all = [mean,max,abi,MI_exp,GC_exp,pears,pears_raw,MI_exp_raw_no_mask,MI_exp_raw_mask,MS_exp ]
+names = ["mean","max","abi","MI_exp","GC_exp","pears","pears_raw","MI_exp_raw_no_mask","MI_exp_raw_mask ", "MS_exp"]
+
+kendall_scores = list()
+generalized_kendall_scores = list()
+overlap_scores = list()
+rbo_scores = list()
 
 
 print("Count = " + str(count))
@@ -247,7 +252,8 @@ for i in range(0,len(all)):
    for j in range(i+1,len(all)):
        a = all[i]
        b = all[j]
-
+      
+       name = names[i] + " vs " + names[j]
        print("comparing: " + names[i] + " and "  + names[j])
        print("----------------------------------------------")
 
@@ -258,13 +264,14 @@ for i in range(0,len(all)):
        print(tau,p_value)
        print("                         ")
        print("                          ")
-
+       generalized_kendall_scores.append([name,tau,p_value])
 print("---------------------------------------")
 for i in range(0,len(all)):
    for j in range(i+1,len(all)):
        a = all[i]
        b = all[j]
 
+       name = names[i] + " vs " + names[j]
        print("comparing: " + names[i] + " and "  + names[j])
        print("----------------------------------------------")
 
@@ -276,13 +283,14 @@ for i in range(0,len(all)):
        print("                         ")
        print("                          ")
 
-
+       kendall_scores.append([name,cor,p])
 print("---------------------------------------")
 for i in range(0,len(all)):
    for j in range(i+1,len(all)):
        a = all[i]
        b = all[j]
 
+       name = names[i] + " vs " + names[j]
        print("comparing: " + names[i] + " and "  + names[j])
        print("----------------------------------------------")
 
@@ -295,13 +303,14 @@ for i in range(0,len(all)):
        print("                         ")
        print("                          ")
 
-
+       rbo_scores.append([name,ext,p])
 print("---------------------------------------")
 for i in range(0,len(all)):
    for j in range(i+1,len(all)):
        a = all[i]
        b = all[j]
 
+       name = names[i] + " vs " + names[j]
        print("comparing: " + names[i] + " and "  + names[j])
        print("----------------------------------------------")
 
@@ -311,14 +320,102 @@ for i in range(0,len(all)):
        print(val)
        print("                         ")
        print("                          ")
+       overlap_scores.append([name,val])
+
+#sort after hightest score
+gk = sorted(generalized_kendall_scores,key=lambda x: x[1])
+k = sorted(kendall_scores,key=lambda x: x[1])
+r = sorted(rbo_scores,key=lambda x: x[1])
+o = sorted(overlap_scores,key=lambda x: x[1])
+
+print(gk)
+
+
+
+plt.rcParams.update({'font.size': 6})
+
+x_axis = range(1, len(gk) + 1)
+
+y_gk = [item[1] for item in gk]
+y_k = [item[1] for item in k]
+y_o = [item[1] for item in o]
+y_r = [item[1] for item in r]
+
+
+print(y_gk)
+
+print(len(y_gk))
+names_gk = [item[0] for item in gk]
+names_k = [item[0] for item in k]
+names_o = [item[0] for item in o]
+names_r = [item[0] for item in r]
+
+fig1,ax1 = plt.subplots()
+fig1.subplots_adjust(bottom=0.3)
+ax1.plot(x_axis,y_gk)
+ax1.set_title("Generalized Kendall Tau")
+plt.vlines(x_axis,0,1,linestyles='dashed',lw=0.5,colors='lightgrey')
+plt.xticks(x_axis,names_gk,rotation=90)
+
+plt.savefig("/home/gentoo/Sync/Send/a.png")
+
+
+fig2,ax2 = plt.subplots()
+fig2.subplots_adjust(bottom=0.3)
+ax2.plot(x_axis,y_k)
+ax2.set_title("Kendall Tau")
+plt.vlines(x_axis,0,1,linestyles='dashed',lw=0.5,colors='lightgrey')
+plt.xticks(x_axis,names_k,rotation=90)
+plt.savefig("/home/gentoo/Sync/Send/b.png")
+
+fig3,ax3 = plt.subplots()
+fig3.subplots_adjust(bottom=0.3)
+ax3.plot(x_axis,y_r)
+ax3.set_title("RBO")
+plt.vlines(x_axis,0,1,linestyles='dashed',lw=0.5,colors='lightgrey')
+plt.xticks(x_axis,names_r,rotation=90)
+plt.savefig("/home/gentoo/Sync/Send/c.png")
+
+fig4,ax4 = plt.subplots()
+fig4.subplots_adjust(bottom=0.3)
+ax4.plot(x_axis,y_o)
+ax4.set_title("Overlap")
+plt.vlines(x_axis,0,1,linestyles='dashed',lw=0.5,colors='lightgrey')
+plt.xticks(x_axis,names_o,rotation=90)
+plt.savefig("/home/gentoo/Sync/Send/d.png")
 
 
 
 
 
+#sort after name
+gk = sorted(generalized_kendall_scores,key=lambda x: x[0])
+k = sorted(kendall_scores,key=lambda x: x[0])
+r = sorted(rbo_scores,key=lambda x: x[0])
+o = sorted(overlap_scores,key=lambda x: x[0])
+
+y_gk = [item[1] for item in gk]
+y_k = [item[1] for item in k]
+y_o = [item[1] for item in o]
+y_r = [item[1] for item in r]
 
 
+names_gk = [item[0] for item in gk]
+names_k = [item[0] for item in k]
+names_o = [item[0] for item in o]
+names_r = [item[0] for item in r]
 
+
+fig5,ax5 = plt.subplots()
+fig5.subplots_adjust(bottom=0.3)
+ax5.plot(x_axis,y_o,label="overlap",lw=0.8)
+ax5.plot(x_axis,y_r,label = "rbo",lw=0.8)
+ax5.plot(x_axis,y_gk,label = "generalized kendalltau",lw=0.8)
+ax5.plot(x_axis,y_k,label="kendall tau",lw=0.8)
+plt.vlines(x_axis,0,1,linestyles='dashed',lw=0.5,colors='lightgrey')
+plt.xticks(x_axis,names_o,rotation=90)
+plt.legend()
+plt.savefig("/home/gentoo/Sync/Send/e.png")
 
 
 
