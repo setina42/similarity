@@ -23,9 +23,21 @@ def transform(x,y,z,affine):
 
 def mirror_sagittal(image):
 	"""
-	Sagittal datasets form Allen mouse brain are only collected for the right/left? hemisphere.
-	Function to mirror feature map at midline and saving image as nifti-file.
+	Sagittal datasets form Allen mouse brain are only collected for one hemisphere.
+	Function to mirror feature map at midline (midline determined at the origin by affine)
+	and saving image as NIfTI-file.
+	
+	Parameters
+	----------
+	image: str
+		Path to NIfTI file.
+
+	Returns
+	---------
+	path_to_mirrored: str
+		Path to the mirrored NIfTI file.
 	"""
+
 	img = nibabel.load(image)
 	img_data = img.get_fdata()
 
@@ -76,6 +88,22 @@ def mirror_sagittal(image):
 	return path_to_mirrored
 
 def create_mask(image,threshold):
+	"""
+	Creates and saves a binary mask file.
+
+	Parameters
+	----------
+	image: str
+		Path to NIfTI image.
+	threshold: int or float
+		threshold used for mask creation. All voxels equal or below threshold will be mapped to a value of zero,
+		all voxels above threshold will be mapped to a value of one.
+
+	Returns
+	---------
+	img_out: str
+		Path to the mask in NIfTI format.
+	"""
 	#I think i need 0 to be in my mask. This seems not to be possible using fslmaths, so maybe do directly with numpy? thr sets all to zero below the value and bin uses image>0 to binarise.
 	#mask = fsl.Threshold()
 	#mask.inputs.thresh = 0
@@ -104,10 +132,27 @@ def create_mask(image,threshold):
 	return img_out
 
 def nan_if(arr,value):
+	""" replace input value with NaN in given array"""
 	return np.where(arr == value, np.nan,arr)
 
 
 def get_energy_density(id):
+	"""
+	Reads in the energy, density information for a given dataset ID
+
+	Parameters
+	----------
+	id: int
+		Unique DataSetIF used by ABI to identfy experiment
+
+	Returns
+	---------
+	energy: float
+		Energy level for a given gene. This value denotes the fraction of voxels that show gene expression,
+		modulated by signal intensity.
+	density: float
+		Density level for a given gene. This value denotes the fraction of voxels that show gene expression.
+	"""
 	#TODO: put that into the ABI-expression folder for a new version ??
 	path = "/usr/share/ABI-expression-data/density_energy.csv"
 	tb = pd.read_csv(path,delimiter = ',')
@@ -119,6 +164,20 @@ def get_energy_density(id):
 
 
 def check_expression_level_dataset(imgs):
+	"""
+	For creating an average gene expression map for a gene, this function filters out datasets that show significantly
+	less expression than others, and the average is created only for the remaining experiments.
+
+	Parameters
+	----------
+	imgs: list of str
+		paths to all NIfTI files of a given gene.
+	
+	Returns
+	--------
+	surviving_imgs: list of str
+		paths to all NIfTI files to be used to create the average expression map.
+	"""
 	#TODO:what to do about 2 datasets??
 	en = dict()
 	dens = dict()
@@ -168,7 +227,23 @@ def check_expression_level_dataset(imgs):
 #maybe exclude exp. with little expression (ABI MAIL)
 def create_experiment_average(imgs,strategy='max'):
 	"""
-	In case of several datasets present, experiment average is calculated.
+	In case of several datasets present for one gene, experiment average is calculated, and 
+	experiment average is saved as NIfTI file.
+	Datasets that show significantly less expression are filtered out.
+
+	Parameters
+	----------
+	imgs: list of str
+		paths to NIfTI files to be used to create an average map.
+	strategy: str {mean,max}
+		strategy to be used to create the average. 
+		mean: the mean expression level of all files will be used, values of -1 will be ignored
+		max: the maximum expression level of all files will be used
+
+	Returns
+	--------
+	path_to_exp_average: str
+		path to the created experiment average NIfTI file
 	"""
 
 
@@ -210,7 +285,28 @@ def create_experiment_average(imgs,strategy='max'):
 
 def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map = None,metric = 'MI',metric_weight = 1.0,radius_or_number_of_bins = 64,sampling_strategy='Regular',sampling_percentage=1.0):
 	"""
-	Nipype ants
+	Nipype interface for using ANTs' MeasureImageSimilarity. Calculates similarity between two images using various metrics
+
+	Parameters
+	----------
+	fixed_image: str
+		path to fixed image
+	moving_image: str
+		path to moving image
+	mask_gene: str, optional
+		path to mask to limit voxels considered by metric for moving image
+	mask_map: str, optional
+		path to mask to limit voxels considered by metric for fixed image
+	metric: str, {'MI'.'CC','GC','Mattes',MeanSquares'}
+		metric to be used
+	metric_weight:
+		??
+	radius_or_number_of_bins: int
+		
+	sampling_strategy: str {None,Regular,Random}
+		
+	sampling_percentage: float
+		
 	"""
 	sim = ants.MeasureImageSimilarity()
 	sim.inputs.dimension = 3
@@ -238,6 +334,9 @@ def nistats_compare(ref_img,src_img):
 	return res
 
 def _plot(dis,stat_map,vs):
+	"""
+	Combines plots from different feature maps and the input feature map into a single plot
+	"""
 	fig = plt.figure()
 	main = fig.add_axes([0,0,0.6,1.0])
 	ax_1=fig.add_axes([0.6,0,0.4,0.3])
@@ -266,6 +365,23 @@ def _plot(dis,stat_map,vs):
 #TODO: parameterize thresh_percentile and absolute threshold (???)
 #TODO: maybe use the same cut coords for all plots, may prove difficult bc not possbile to use nilearns func directly
 def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',vs = "expression",path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
+	"""
+	Plots the input feature map as well as the top three scores
+
+	Parameters:
+	stat_map: str
+		path to the input feature map NIfTI file
+	results: ??
+		sorted results of the similarity analyis
+	template: str
+		brain template .obj file to be used for 3D visualization
+	percentile_threshold: int, optional
+		percentile to determine the treshold used for displaying the feature maps
+	path_to_genes: str
+		path to folder of ABI-expression-library
+	
+
+	"""
 	# TODO: put into stat3D or stat, to avoid loading the data twice threshold = fast_abs_percentile(stat_map)
 	dis = dict()
 	img_s = nibabel.load(stat_map)
@@ -337,7 +453,20 @@ def calculate_significance(results):
 
 
 def output_results(results,hits = 3,output_name=None):
+	"""
+	saves sorted results of the similarity analysis into a .csv file
+	and prints top hits results to terminal
 
+	Parameters
+	----------
+
+	results: list
+		sorted results from the similarity analysis, containing gene name, experiment ID, similarity score and path
+	hits: int
+		number of top hits to pring
+	output_name: str
+		file name for output results
+	"""
 	print("Top " + str(hits) + " hits: ")
 	for i in range(0,hits):
 		print(str(results[i][1][0]) + " " + str(results[i][1][1]))
@@ -357,7 +486,25 @@ def output_results(results,hits = 3,output_name=None):
 #TODO: sorted results: same score, sorting?? warning
 def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94,mirror=True,flip=False):
 	"""
-	master blabla
+	Run ANTs MeasureImageSimilarity for given input map against all gene expression patterns.
+
+	Parameters
+	-----------
+
+	stat_map: str
+		path to input feature map in NIfTI format.
+	path_to_genes: str
+		path to folder for gene expression data.
+	metric: str 
+	radius_or_number_of_bins: int
+	comparions: str {'gene','experiment'}
+		Value of 'gene' means to compare the input feature map with every gene, creating an average expression map per gene.
+		Value of 'experiment' means compare input feature map against every experiment.
+	strategy: str {'mean','max'}
+		Strategy used for creating the experiment average per gene. Only used with comparison = 'gene'.
+	percentile_threshold: int
+
+
 	"""
 
 	#TODO: if mirrored or mask files are already present, don't make them again
@@ -463,6 +610,27 @@ def normalize_image(img_path):
 
 #TODO:check if I ever have two experiment files!!
 def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200,percentile_threshold=94):
+	"""
+	Run ANTs MeasureImageSimilarity for given input map against all projection map.
+
+	Parameters
+	-----------
+
+	stat_map: str
+		path to input feature map in NIfTI format.
+	path_to_exp: str
+		path to folder for projecton data.
+	metric: str 
+	radius_or_number_of_bins: int
+	comparions: str {'gene','experiment'}
+		Value of 'gene' means to compare the input feature map with every gene, creating an average expression map per gene.
+		Value of 'experiment' means compare input feature map against every experiment.
+	strategy: str {'mean','max'}
+		Strategy used for creating the experiment average per gene. Only used with comparison = 'gene'.
+	percentile_threshold: int
+	resolution: int {200,40}
+	"""
+:	
 	#TODO: mirror sagittal for connectivity?? If stat_map is a sagittal gene, mirror it (maybe do so before)
 	mask_map = create_mask(stat_map,-1)
 	results = defaultdict(list)
