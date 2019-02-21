@@ -469,7 +469,10 @@ def output_results(results,hits = 3,output_name=None):
 	"""
 	print("Top " + str(hits) + " hits: ")
 	for i in range(0,hits):
-		print(str(results[i][1][0]) + " " + str(results[i][1][1]))
+		try:
+			print(str(results[i][1][0]) + " " + str(results[i][1][1]))
+		except:
+			a = 3
 	#TODO: some smart name...
 	#save to csv
 	if output_name is None:
@@ -484,7 +487,7 @@ def output_results(results,hits = 3,output_name=None):
 
 	return
 #TODO: sorted results: same score, sorting?? warning
-def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94,mirror=True,flip=False):
+def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94,mirror=True,flip=False,include = None,exclude=None):
 	"""
 	Run ANTs MeasureImageSimilarity for given input map against all gene expression patterns.
 
@@ -557,6 +560,15 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 			img = []
 			imgs = glob.glob(path + '/*/*_2dsurqec.nii.gz')
 			for img_gene in imgs:
+				if include is not None:
+					id = (os.path.basename(img_gene).split("_")[3])
+					#id = int(id)
+					if (id not in include) and (int(id) not in include):continue
+				if exclude is not None:
+					id = (os.path.basename(img_gene).split("_")[3])
+					if (id in exclude) or (int(id) in exclude):continue
+					#if (id not in include) and (int(id) not in include):continue
+				print("sth is in include")
 				if "sagittal" in img_gene: img_gene = mirror_sagittal(img_gene)
 				mask_gene = create_mask(img_gene,-1)
 				experiment_id = os.path.basename(img_gene).split("_")[3]
@@ -630,7 +642,7 @@ def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connect
 	percentile_threshold: int
 	resolution: int {200,40}
 	"""
-:	
+	
 	#TODO: mirror sagittal for connectivity?? If stat_map is a sagittal gene, mirror it (maybe do so before)
 	mask_map = create_mask(stat_map,-1)
 	results = defaultdict(list)
@@ -673,7 +685,13 @@ def main():
 	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
 
 #	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
-	measure_similarity_expression(img,path_to_genes="small_dataset_exp")
+	id = 79677145
+	include = [10,12,79677145,991,2313,243249]
+	if id not in include:
+		print("not in include")
+	else:
+		print("is in include")
+	measure_similarity_expression(img,comparison = "experiment",exclude = [71489813],include = [79677145,71489813])
 
 
 #	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'CC',radius_or_number_of_bins = 4)
