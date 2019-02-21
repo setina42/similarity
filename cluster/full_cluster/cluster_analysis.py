@@ -5,6 +5,10 @@ from similarity import measure_similarity_expression,output_results
 import glob
 from sklearn.cluster import AgglomerativeClustering
 
+
+#TODO: Can speed the whole thing up a lot if I dont measure the similarity of rejected genes. Parameter in measure_similarity_expressoin should take names that I want to run against, instead of full dataset.
+#Should not be too hard.
+
 def get_image_path(name,id):
    path = "/usr/share/ABI-expression-data/"
 #	/usr/share/ABI-expression-data/Ermap/Ermap_P56_sagittal_68844875_200um/Ermap_P56_sagittal_68844875_200um_2dsurqec_mirrored.nii.gz
@@ -28,11 +32,13 @@ def get_top_hit(path):
 
 
 #if not already present, run similarity all against it
-def run_sim_single(name,id,img_path):
+def run_sim_single(name,id,img_path,exclude = None):
+   print(name)
+   print(id)
    base_path = "/home/gentoo/src/similarity/cluster/full_cluster/single_gene_results/"
    file_name = os.path.join(base_path,"{}_{}_similarity_results_experiment.csv".format(name,str(id)))
    if not os.path.exists(file_name):
-      results = measure_similarity_expression(img_path,comparison = "experiment",metric = "GC")
+      results = measure_similarity_expression(img_path,comparison = "experiment",metric = "GC",exclude = exclude)
       sorted_results = sorted(results.items(),key=lambda x: x[1][0])
       name_out = "{}_{}_similarity_results_experiment".format(name,str(id))
       output_path = base_path
@@ -95,52 +101,92 @@ def run_cluster(path,name,id):
          f.write("{},{},{}\n".format(gene[i],resi[i],lab[i]))
    return out_path,top_label
 
-def read_cluster(path,no):
+def read_cluster(path,no,rejected_genes):
    cluster = list()
    with open(path) as f:
       for row in f:
          name = row.split(",")
-         if int(name[2]) == int(no) : continue
-         cluster.append(name[0])
-   return cluster
+         if int(name[2]) == int(no) :
+            rejected_genes.append(name[0])
+         else:
+            cluster.append(name[0])
+   return cluster,rejected_genes
 
 
-def get_res(cluster,original,top_label):
+def get_res(cluster,original,top_label,rejected_genes,done):
+
    exp = original
 
    original_values = read_list(exp)
    original_names = read_names(exp)
-   remaining_cluster = read_cluster(cluster,top_label)
-
+   remaining_cluster,rejected_genes = read_cluster(cluster,top_label,rejected_genes)
    for name in original_names:
       if any(name in s for s in remaining_cluster):
-         print(name)
-         names = name.split("_")
-         return names[0],names[1]
-         break
+         if not any(name in s for s in rejected_genes):
+            names = name.split("_")
+            return names[0],names[1],rejected_genes,done
+            break
+      continue
+
+      done = True
+      return None,None,rejected_genes,done
 
 
-
+def write_res(all_result_genes,input_additions,out_prefix = "1"):
+   out = os.path.basename(input_additions).split("similarity_results_experiment")[0]
+   out = out + "clustering_results" + "_" + out_prefix
+   out_name = os.path.join(os.path.dirname(input_additions),out)
+   with open(out_name,'w') as f:
+      for gene in all_result_genes:
+         f.write("{},{},{}\n".format(gene[0],gene[1],gene[2]))
 
 
 
 input_additions = "2b_2a_2_4a_4b_4_similarity_results_experiment.csv"
-
+rejected_genes = list()
+done = False
+exclude = list()
+all_result_genes = list()
 #get top hit, name, id, path
 top_hit = get_top_hit(input_additions)
-
-#create or get path single expression value vs all
-res_top_hit_path = run_sim_single(top_hit[0],top_hit[1],top_hit[2])
+all_result_genes.append(top_hit)
+rejected_genes.append(top_hit[0] + "_" + str(top_hit[1]))
+exclude.append(str(top_hit[1]))
+#create or get path single expression value vs all,excluding itself
+res_top_hit_path = run_sim_single(top_hit[0],top_hit[1],top_hit[2],exclude = exclude)
 
 #rm identity (top hit) for clustering
-res_top_hit_rm_top_path = rm_top(res_top_hit_path,top_hit[0],top_hit[1])
+#res_top_hit_rm_top_path = rm_top(res_top_hit_path,top_hit[0],top_hit[1])
 
 #write the cluster file
-cluster,top_label = run_cluster(res_top_hit_rm_top_path,top_hit[0],top_hit[1])
+#cluster,top_label = run_cluster(res_top_hit_rm_top_path,top_hit[0],top_hit[1])
+cluster,top_label = run_cluster(res_top_hit_path,top_hit[0],top_hit[1])
 
 #get the first hit that was not removed from cluster that appears in the original results
-name,id = get_res(cluster,input_additions,top_label)
+name,id,rejected_genes,done = get_res(cluster,input_additions,top_label,rejected_genes,done)
+print(rejected_genes)
 
 #continue this cycle with this gene: find all similarity and so on thill the cluster only consists of one gene
+path = get_image_path(name,id) 
+all_result_genes.append([name,id,path])
+rejected_genes.append(name + "_" + str(id))
+
+
+
+i = 0
+while not done:
+   i = i + 1
+   res_top_hit_path = run_sim_single(name,id,path)
+   #res_top_hit_rm_top_path = rm_top(res_top_hit_path,top_hit[0],top_hit[1])
+   #cluster,top_label = run_cluster(res_top_hit_rm_top_path,top_hit[0],top_hit[1])
+   cluster,top_label = run_cluster(res_top_hit_path,top_hit[0],top_hit[1])
+   name,id,rejected_genes,done = get_res(cluster,input_additions,top_label,rejected_genes,done)
+   for gene in rejected_genes:
+      exclude.append(str(gene.split("_")[1]))
+   path = get_image_path(name,id)
+   all_result_genes.append([name,id,path])
+   #Just for debugging reasons, save all_result_genes at every iteration
+   write_res(all_result_genes,input_additions,out_prefix = str(i))
+   print((exclude))
 
 
