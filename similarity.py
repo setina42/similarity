@@ -15,8 +15,20 @@ import pandas as pd
 #from nistats.reporting import compare_niimgs
 from scipy.stats import ttest_1samp
 from mne.stats import permutation_t_test
+from nipype.interfaces.base import CommandLine
+
 
 def transform(x,y,z,affine):
+	"""
+	Returns affine transformed coordinates (x,y,z) -> (i,j,k)
+
+	Parameters
+	----------
+	x,y,z: int
+		Integer coordinates.
+	affine: array
+		4x4 matrix specifying image affine.
+	"""
 	M = affine[:4, :4]
 	A = np.linalg.inv(M)
 	return np.round(A.dot([x,y,z,1]),decimals=0)
@@ -299,15 +311,16 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 		path to mask to limit voxels considered by metric for fixed image
 	metric: str, {'MI'.'CC','GC','Mattes',MeanSquares'}
 		metric to be used
-	metric_weight:
-		??
+	metric_weight: int, optional
+		metric weight,, see ANTS MeasureImageSimilarity
 	radius_or_number_of_bins: int
-		
+		radius of number of bins, see ANTS MeasureImageSimilarity 
 	sampling_strategy: str {None,Regular,Random}
-		
+		sampling strategy, see ANTS MeasureImageSimilarity
 	sampling_percentage: float
-		
+		sampling percentage, ANTS MeasureImageSimilarity
 	"""
+
 	sim = ants.MeasureImageSimilarity()
 	sim.inputs.dimension = 3
 	sim.inputs.metric = metric
@@ -329,9 +342,9 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 	return res
 
 
-def nistats_compare(ref_img,src_img):
-	res = compare_niimgs([ref_img],[src_img],plot_hist=False)
-	return res
+#def nistats_compare(ref_img,src_img):
+#	res = compare_niimgs([ref_img],[src_img],plot_hist=False)
+#	return res
 
 def _plot(dis,stat_map,vs):
 	"""
@@ -371,7 +384,7 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 	Parameters:
 	stat_map: str
 		path to the input feature map NIfTI file
-	results: ??
+	results: list
 		sorted results of the similarity analyis
 	template: str
 		brain template .obj file to be used for 3D visualization
@@ -410,46 +423,43 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 	return
 
 
-def calculate_significance_save(results):
-	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	all_scores = list()
-	for score in results.values():
-		all_scores.append(score[0])
-	all_scores = np.asarray(all_scores)
-
-	#get significance scores for results
-	for id in results.keys():
-		t,prob = ttest_1samp(all_scores,results[id][0])
-		results[id].append(t)
-		results[id].append(prob)
-
-		cohens = (np.mean(all_scores) - results[id][0]) / np.std(all_scores)
-		results[id].append(cohens)
-	
-	for i in range(0,len(sorted_results)-1):
-		score_1 = sorted_results[i][1][0]
-		score_2 = sorted_results[i+1][1][0]
-		diff_score = abs(score_1 - score_2)
-		sorted_results[i][1].append(diff_score)
+#def calculate_significance_save(results):
+#	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
+#	all_scores = list()
+#	for score in results.values():
+#		all_scores.append(score[0])
+#	all_scores = np.asarray(all_scores)
+#
+#	#get significance scores for results
+#	for id in results.keys():
+#		t,prob = ttest_1samp(all_scores,results[id][0])
+#		results[id].append(t)
+#		results[id].append(prob)
 
 
-
-
-	return results,sorted_results
+#		cohens = (np.mean(all_scores) - results[id][0]) / np.std(all_scores)
+#		results[id].append(cohens)
+#	
+#	for i in range(0,len(sorted_results)-1):
+#		score_1 = sorted_results[i][1][0]
+#score_2 = sorted_results[i+1][1][0]
+#		diff_score = abs(score_1 - score_2)
+#		sorted_results[i][1].append(diff_score)
+#	return results,sorted_results
 
 
 
 
-def calculate_significance(results):
-	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-
-	for i in range(0,len(sorted_results)-1):
-		score_1 = sorted_results[i][1][0]
-		score_2 = sorted_results[i+1][1][0]
-		diff_score = abs(score_1 - score_2)
-		sorted_results[i][1].append(diff_score)
-
-	return results,sorted_results
+#def calculate_significance(results):
+#	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
+#
+#	for i in range(0,len(sorted_results)-1):
+#		score_1 = sorted_results[i][1][0]
+#		score_2 = sorted_results[i+1][1][0]
+#		diff_score = abs(score_1 - score_2)
+#		sorted_results[i][1].append(diff_score)
+#
+#	return results,sorted_results
 
 
 def output_results(results,hits = 3,output_name=None):
@@ -506,6 +516,10 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 	strategy: str {'mean','max'}
 		Strategy used for creating the experiment average per gene. Only used with comparison = 'gene'.
 	percentile_threshold: int
+	include: list of str or float,optional
+		List of Gene IDs. If specified, similarity measure will only be run against those IDs given in list.
+	exclude: list of str or float,optional
+		List of Gene IDs. If specified, those ID will be excluded from similarity analysis.
 
 
 	"""
@@ -553,6 +567,7 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 			results[dir].append(img_gene)
 
 	elif comparison == 'experiment':
+		i = 1
 		for dir in os.listdir(path_to_genes):
 			path = os.path.join(path_to_genes,dir)
 			if not os.path.isdir(path):continue
@@ -573,7 +588,9 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 				mask_gene = create_mask(img_gene,-1)
 				experiment_id = os.path.basename(img_gene).split("_")[3]
 				id = dir + "_" + experiment_id
+				print(i)
 				similarity = ants_measure_similarity(stat_map,img_gene,mask_gene = mask_gene,mask_map=mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
+				i = i + 1
 				results[id].append(similarity)
 				results[id].append(img_gene)
 	#TODO: sort, or use sorted dict form beginning, or only keep top scores anyway?
@@ -678,25 +695,16 @@ def main():
 #img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
 # res = ants_measure_similarity("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz","/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um//Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
 	#	print(res)
-#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/save_small_dataset/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene')
+	measure_similarity_expression(img,metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
 #	measure_similarity_expression("/home/gentoo/ABI_data_full/data/Tlx2/Tlx2_P56_sagittal_81655554_200um/Tlx2_P56_sagittal_81655554_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
 	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
 
 #	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
-	id = 79677145
-	include = [10,12,79677145,991,2313,243249]
-	if id not in include:
-		print("not in include")
-	else:
-		print("is in include")
-	measure_similarity_expression(img,comparison = "experiment",exclude = [71489813],include = [79677145,71489813])
+	#measure_similarity_expression(img,comparison = "experiment",exclude = [71489813],include = [79677145,71489813])
 
 
-#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'CC',radius_or_number_of_bins = 4)
-
-#	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'Mattes',radius_or_number_of_bins = 32)
 
 #	measure_similarity_expression("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um/Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz",metric = 'MeanSquares',radius_or_number_of_bins = 64)
 
