@@ -12,7 +12,6 @@ import samri.plotting.maps as maps
 from collections import defaultdict
 from nilearn._utils.extmath import fast_abs_percentile
 import pandas as pd
-#from nistats.reporting import compare_niimgs
 from scipy.stats import ttest_1samp
 from mne.stats import permutation_t_test
 from nipype.interfaces.base import CommandLine
@@ -38,7 +37,7 @@ def mirror_sagittal(image):
 	Sagittal datasets form Allen mouse brain are only collected for one hemisphere.
 	Function to mirror feature map at midline (midline determined at the origin by affine)
 	and saving image as NIfTI-file.
-	
+
 	Parameters
 	----------
 	image: str
@@ -59,37 +58,28 @@ def mirror_sagittal(image):
 
 	#TODO:midline point at 31.34, how to mirror properly
 
-	#Copy image right/left(?) from the mid, but keep mid unchanged
-
 	left_side = np.copy(img_data[(mid + 1):,:,: ])
 	left_side = np.flip(left_side,0)
-
 	right_side = np.copy(img_data[0:mid,:,:])
 	right_side = np.flip(right_side,0)
+
 #TODO: checkec for case 3, test for other cases as well
 	#replace
 	if np.shape(left_side)[0] > np.shape(img_data[0:mid,:,:])[0]:
-#		print("case 1")
 		#case 1: origin slightly to the left (or right??), need to trim left_side to the size of the right side
 		replace_value = np.shape(left_side)[0] - np.shape(img_data[0:mid,:,:])[0]
 		img_data[0:mid,:,:][img_data[0:mid,:,:]  == -1] = left_side[(replace_value-1):,:,:][img_data[0:mid,:,:]  == -1]
-		#np.savetxt("Slice_case1.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
 		img_data[mid:np.shape(right_side[0]),:,:][img_data[mid:,:,:]  == -1] = right_side[:,:,:][img_data[mid:,:,:]  == -1]
 
 	elif np.shape(left_side)[0] < np.shape(img_data[0:mid,:,:])[0]:
-#		print("case 2")
 		#case 2 : origin slightly to the right (or left??), need to
 		replace_value = np.shape(img_data[0:mid,:,:])[0] - np.shape(left_side)[0]
 		img_data[replace_value:mid,:,:] = left_side
-		#np.savetxt("Slice_case2.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
-
 		img_data[mid:,:,:][img_data[mid:,:,:]  == -1] = right_side[0:np.shape(img_data[mid:,:,:]),:,:][img_data[mid:,:,:]  == -1]
 	else:
-#		print("case 3")
 		#case 3: same size
 		#TODO: There's got to be a better way to write this....  -> a_slice notation:: a[10:16] is a reference, not a copy!
 		img_data[0:mid,:,:][img_data[0:mid,:,:]  == -1] = left_side[img_data[0:mid,:,:]  == -1]
-		#np.savetxt("Slice_case3.txt",img_data[:,(int(origin[1]) -5):(int(origin[1])) -2, (int(origin[2]) -5)])
 		img_data[mid+1:,:,:][img_data[mid+1:,:,:]  == -1] = right_side[[img_data[mid+1:,:,:]  == -1]]
 
 	img_average = nibabel.Nifti1Image(img_data,img.affine)
@@ -116,23 +106,11 @@ def create_mask(image,threshold):
 	img_out: str
 		Path to the mask in NIfTI format.
 	"""
-	#I think i need 0 to be in my mask. This seems not to be possible using fslmaths, so maybe do directly with numpy? thr sets all to zero below the value and bin uses image>0 to binarise.
-	#mask = fsl.Threshold()
-	#mask.inputs.thresh = 0
-	#mask.inputs.args = '-bin'
-	#mask.inputs.in_file = image
-	#img_out = str.split(image,'.nii')[0] + '_mask_fsl.nii.gz'
-	#mask.inputs.out_file = img_out
-	#mask.run()
 	mask_img = nibabel.load("/usr/share/mouse-brain-atlases/dsurqec_200micron_mask.nii")
 	atlas_mask = mask_img.get_fdata()
 
-	#using numpy instead of fslmaths
 	img = nibabel.load(image)
 	img_data = img.get_fdata()
-	#apparently ambibuous:img_data[img_data >= 0 and atlas_mask == 1] = 1
-#	print("mask")
-#	print(np.min(img_data))
 	#TODO: ensure shape mathces
 	#TODO: also check that there are no values between -1 and 0 that would now not be masked
 	img_data[np.logical_and(img_data > threshold,atlas_mask == 1)] = 1
@@ -184,7 +162,7 @@ def check_expression_level_dataset(imgs):
 	----------
 	imgs: list of str
 		paths to all NIfTI files of a given gene.
-	
+
 	Returns
 	--------
 	surviving_imgs: list of str
@@ -216,13 +194,13 @@ def check_expression_level_dataset(imgs):
 	else:
 		arbitrary_cut_off = 0.5
 		if (abs(res[0] - res[1]) > 1) and (min(res) < arbitrary_cut_off):
-			
+
 			for key_id in en:
 				if en[key_id] < arbitrary_cut_off:
 					index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
 					sur = imgs[index]
 					kicked_out.append(sur)
-					
+
 				else:
 					index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
 					sur = imgs[index]
@@ -231,12 +209,8 @@ def check_expression_level_dataset(imgs):
 			surviving_imgs.append(imgs[0])
 			surviving_imgs.append(imgs[1])
 
-
 	return surviving_imgs
 
-
-#TODO:evaluate mean average, diff to and between single experiments, especially now that we include expression = false as well, with small expr, patterns. Also , habe a loo
-#maybe exclude exp. with little expression (ABI MAIL)
 def create_experiment_average(imgs,strategy='max'):
 	"""
 	In case of several datasets present for one gene, experiment average is calculated, and 
@@ -257,7 +231,6 @@ def create_experiment_average(imgs,strategy='max'):
 	path_to_exp_average: str
 		path to the created experiment average NIfTI file
 	"""
-
 
 	imgs = check_expression_level_dataset(imgs)
 
@@ -341,11 +314,6 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 		res = 0
 	return res
 
-
-#def nistats_compare(ref_img,src_img):
-#	res = compare_niimgs([ref_img],[src_img],plot_hist=False)
-#	return res
-
 def _plot(dis,stat_map,vs):
 	"""
 	Combines plots from different feature maps and the input feature map into a single plot
@@ -377,6 +345,7 @@ def _plot(dis,stat_map,vs):
 
 #TODO: parameterize thresh_percentile and absolute threshold (???)
 #TODO: maybe use the same cut coords for all plots, may prove difficult bc not possbile to use nilearns func directly
+
 def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',vs = "expression",path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
 	"""
 	Plots the input feature map as well as the top three scores
@@ -401,7 +370,7 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 	img_data_s = img_s.get_fdata()
 	tresh_s = fast_abs_percentile(img_data_s[img_data_s >0],percentile=percentile_threshold)
 	print(tresh_s)
-	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,pos_values=True,figure_title=os.path.basename(stat_map))
+	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,positive_only=True,figure_title=os.path.basename(stat_map))
 	dis["main"] = display_stat
 	for i in range(0,hits):
 		gene_name = results[i][0].split("_")[0] #TODO:this should work in both cases (also for connectivity??)
@@ -411,55 +380,14 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 		img = nibabel.load(full_path_to_gene)
 		img_data = img.get_fdata()
 		tresh = fast_abs_percentile(img_data[img_data > 0],percentile=98)
-		display = maps.stat3D(full_path_to_gene,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as=str(i) + '.png',threshold=tresh,pos_values=True,figure_title=gene_name)
+		display = maps.stat3D(full_path_to_gene,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as=str(i) + '.png',threshold=tresh,positive_only=True,figure_title=gene_name)
 		dis[str(i)] = display
 	_plot(dis,stat_map,vs)
 	print(tresh_s)
 	print(tresh)
 	#TODO:sep.function?
 
-
-
 	return
-
-
-#def calculate_significance_save(results):
-#	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-#	all_scores = list()
-#	for score in results.values():
-#		all_scores.append(score[0])
-#	all_scores = np.asarray(all_scores)
-#
-#	#get significance scores for results
-#	for id in results.keys():
-#		t,prob = ttest_1samp(all_scores,results[id][0])
-#		results[id].append(t)
-#		results[id].append(prob)
-
-
-#		cohens = (np.mean(all_scores) - results[id][0]) / np.std(all_scores)
-#		results[id].append(cohens)
-#	
-#	for i in range(0,len(sorted_results)-1):
-#		score_1 = sorted_results[i][1][0]
-#score_2 = sorted_results[i+1][1][0]
-#		diff_score = abs(score_1 - score_2)
-#		sorted_results[i][1].append(diff_score)
-#	return results,sorted_results
-
-
-
-
-#def calculate_significance(results):
-#	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-#
-#	for i in range(0,len(sorted_results)-1):
-#		score_1 = sorted_results[i][1][0]
-#		score_2 = sorted_results[i+1][1][0]
-#		diff_score = abs(score_1 - score_2)
-#		sorted_results[i][1].append(diff_score)
-#
-#	return results,sorted_results
 
 
 def output_results(results,hits = 3,output_name=None):
@@ -594,26 +522,11 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 				results[id].append(similarity)
 				results[id].append(img_gene)
 	#TODO: sort, or use sorted dict form beginning, or only keep top scores anyway?
-	#print(comparison)
-	#view = [ (v,k) for k,v in results.items() ]
-	#view.sort(reverse=True)
-	#for v,k in view:
-	#	print( "%s: %f" % (k,v))
 
 	#TODO: if metric = MSE, sort other way round
-	#sort results:
-
-	#results,sort = calculate_significance(results)
 
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	#print(sorted_results)
-#	print(sorted_results[4]) #5th highest result
-#	print(sorted_results[4][0]) #key = gene or exp_id
-#	print(sorted_results[4][1][0]) #similarity score
-#	print(sorted_results[4][1][1]) #path
-	#results_with_significance = calculate_significance(sorted_results)
 	output_results(sorted_results,output_name="expression" + os.path.basename(stat_map), hits = 3)
-	#plot_results(stat_map,sorted_results,vs="expression",hits=3)
 
 	return results
 
@@ -635,7 +548,6 @@ def normalize_image(img_path):
 
 #TODO: for connectivity data, it would be really cool if the injection site could be indicated in the plot. Cou can sort of see it with the highest values beeing the inj s
 
-#   , but bdb
 
 #TODO:check if I ever have two experiment files!!
 def measure_similarity_connectivity(stat_map,path_to_exp="/usr/share/ABI-connectivity-data",metric = 'MI',radius_or_number_of_bins = 64,resolution=200,percentile_threshold=94):
