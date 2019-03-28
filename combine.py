@@ -9,6 +9,7 @@ import nibabel
 import sys
 
 def get_image_path_from_id(id,path_to_data="/usr/share/ABI-expression-data/"):
+   """Finds image path for a given gene in the data library given the unique identifier SectionDataSetID"""
 
 #	/usr/share/ABI-expression_data-data/Ermap/Ermap_P56_sagittal_68844875_200um/Ermap_P56_sagittal_68844875_200um_2dsurqec_mirrored.nii.gz
    path_s = glob.glob(os.path.join(path_to_data,"*/*_P56_sagittal_{}_200um/*_P56_sagittal_{}_200um_2dsurqec_mirrored.nii.gz".format(id,id)))
@@ -20,6 +21,7 @@ def get_image_path_from_id(id,path_to_data="/usr/share/ABI-expression-data/"):
 
 
 def get_image_path(name,id,path_to_data="/usr/share/ABI-expression-data/"):
+   """Finds image path for a given gene in the data library given the unique identifier SectionDataSetID and gene name"""
 
 #	/usr/share/ABI-expression_data-data/Ermap/Ermap_P56_sagittal_68844875_200um/Ermap_P56_sagittal_68844875_200um_2dsurqec_mirrored.nii.gz
    path_s = glob.glob(os.path.join(path_to_data,"{}/{}_P56_sagittal_{}_200um/{}_P56_sagittal_{}_200um_2dsurqec_mirrored.nii.gz".format(name,name,id,name,id)))
@@ -30,6 +32,7 @@ def get_image_path(name,id,path_to_data="/usr/share/ABI-expression-data/"):
    if len(path_c) == 1: return path_c[0]
 
 def get_top_hit(path):
+   """Returns the top results (ID, gene name, and path) from the results with image similarity comparison. """
    try:
       with open(path) as f:
          for row in f:
@@ -63,6 +66,7 @@ def get_ids(exp):
 
 # cluster
 def read_list(path):
+   """ Reads scores from the results with image similaritiy comparison. """
    scores = list()
    try:
       with open(path) as f:
@@ -139,7 +143,7 @@ def write_res(all_result_genes,results,mode,out_prefix = "1"):
 
 #if not already present, run similarity all against it
 def run_sim_single(base_path,name,id,img_path,iteration,exclude = None,path_to_genes="/usr/share/ABI-expression_data",metric = "GC",mode="cluster",comparison="experiment",radius_or_number_of_bins = 64,strategy="mean"):
-
+   """ Runs similarity.measure_similarty_expression"""
    name_out = "{}_{}_{}_{}_similarity_results_experiment".format(mode,name,str(id),str(iteration))
    file_name = os.path.join(base_path,name_out)
    if not os.path.exists(file_name):
@@ -183,6 +187,7 @@ def add_images(imgs):
    return path
 
 def subtract(image1,image2,name,base_path):
+   """ Subtracts two input images (data matrix) """
    done = False
    if "sagittal" in image2:image2 = mirror_sagittal(image2)
    img1 = nibabel.load(image1)
@@ -201,6 +206,7 @@ def subtract(image1,image2,name,base_path):
 
 
 def run_cluster(path,name,id,iteration="0"):
+   """Clusters genes according to their similarity score and saves results """
    #from the single against all experiment
    exp = path
    out = "{}_{}_cluster.csv".format(name,str(id))
@@ -226,6 +232,26 @@ def run_cluster(path,name,id,iteration="0"):
    return out_path,top_label
 
 def read_cluster(path,no,rejected_genes):
+   """ 
+   Reads results from clustering
+
+   Parameters
+   ----------
+   path: str
+      path to cluster results
+   no: int
+      Cluster label of rejected cluster
+   rejected_genes: list
+      IDs (???or names) of previously rejected genes
+
+   Returns
+   -------
+
+   cluster: list
+      IDs of non-rejected genes
+   rejected_genes: list
+      IDs of previously rejected genes, with added newly rejected genes from current iteration
+   """
    cluster = list()
    with open(path) as f:
       for row in f:
@@ -334,7 +360,8 @@ def run_cluster_analysis(results,out=None,max_iterations=None,path_to_genes="/us
       if max_iterations:
          if max_iterations < i:
             print("{} iterations reached without finishing".format(str(max_iterations)))
-            done=True
+            break
+
       if done: print("Finished after {} iterations".format(str(i)))
 
 
@@ -349,7 +376,7 @@ def subtraction_analysis(stat_map,results,out=None,max_iterations=None,path_to_g
       base_path = path
 
    all_result_genes = list()
-   
+
    #Evaluation/Debugging
    #input_paths = list()
    #input_components,no_additions = get_ids(results)
@@ -383,13 +410,11 @@ def subtraction_analysis(stat_map,results,out=None,max_iterations=None,path_to_g
       print(top_hit_path)
       subtract_top_hit_path,done = subtract(subtract_top_hit_path,top_hit_path,str(i),base_path)
       if done==True:
-         print("end reached after {} iterations".format(str(i)))
+         print("End reached after {} iterations".format(str(i)))
          break
       results_first_sub_path = run_sim_single(base_path,top_hit_name,top_hit_id,subtract_top_hit_path,str(i),path_to_genes = path_to_genes,metric = metric,comparison=comparison,radius_or_number_of_bins = radius_or_number_of_bins,strategy=strategy)
       if max_iterations:
          if i > max_iterations:
-            print("max iterations reached without finishing")
+            print("Max iterations reached without finishing")
             done = True
-
-
 
