@@ -83,6 +83,7 @@ def read_list(path):
       return scores
 
 def read_names(path):
+   """ Reads names from the results with image similarity comparions. """
    ranked_genes = list()
    try:
       with open(path) as f:
@@ -96,43 +97,12 @@ def read_names(path):
          for row in f:
             name,id,score,path = row.split(",")
             name = name +"_" + id
-            ranked_genes.append(name)
-   return ranked_genes
-
-#subtraction
-def sub_read_list(path):
-   ranked_genes = list()
-   try:
-      with open(path) as f:
-         for row in f:
-            name = row.split(",")[0]
-            ranked_genes.append(name)
-      return ranked_genes
-   except FileNotFoundError:
-      path = path + ".csv"
-      with open(path) as f:
-         for row in f:
-            name = row.split(",")[0]
-            ranked_genes.append(name)
-      return ranked_genes
-
-def sub_read_names(path):
-   ranked_genes = list()
-   try:
-      with open(path) as f:
-         for row in f:
-            name = (row.split(",")[0])
-            ranked_genes.append(name)
-   except FileNotFoundError:
-      path = path + ".csv"
-      with open(path) as f:
-         for row in f:
-            name = (row.split(",")[0])
             ranked_genes.append(name)
    return ranked_genes
 
 
 def write_res(all_result_genes,results,mode,out_prefix = "1"):
+   """Writes genes found with subtraction/clustering (currently after every iteration) """
    out = os.path.basename(results).split("similarity_results_experiment")[0]
    out = "{}_{}_results_{}".format(out,mode,out_prefix)
    out_name = os.path.join(os.path.dirname(results),out)
@@ -142,7 +112,9 @@ def write_res(all_result_genes,results,mode,out_prefix = "1"):
 
 
 #if not already present, run similarity all against it
-def run_sim_single(base_path,name,id,img_path,iteration,exclude = None,path_to_genes="/usr/share/ABI-expression_data",metric = "GC",mode="cluster",comparison="experiment",radius_or_number_of_bins = 64,strategy="mean"):
+def run_sim_single(base_path,name,id,img_path,iteration,exclude = None,path_to_genes="/usr/share/ABI-expression_data",metric = "GC",
+                     mode="cluster",comparison="experiment",radius_or_number_of_bins = 64,strategy="mean"):
+
    """ Runs similarity.measure_similarty_expression"""
    name_out = "{}_{}_{}_{}_similarity_results_experiment".format(mode,name,str(id),str(iteration))
    file_name = os.path.join(base_path,name_out)
@@ -154,7 +126,6 @@ def run_sim_single(base_path,name,id,img_path,iteration,exclude = None,path_to_g
       output_results(sorted_results,output_name= path_)
    else:
       path_ = file_name
-   #return os.path.join(base_path,"{}_{}_similarity_results_experiment.csv".format(name,str(id)))
    return path_
 
 
@@ -165,7 +136,7 @@ def all_in_exclude(exclude,input_components):
    return True
 
 def add_images(imgs):
-   """debugging/evaluationonly"""
+   """debugging/evaluation only"""
    ii = imgs[0]
    if "sagittal" in ii:ii = mirror_sagittal(ii)
    image1 = nibabel.load(ii)
@@ -265,13 +236,12 @@ def read_cluster(path,no,rejected_genes):
 
 def get_res(cluster,original,top_label,rejected_genes,done):
    """ 
-   Compares ???
+   Compares genes from the original similarity results to genes in the remaining cluster and rejected genes, returns first hit if any found.
 
    """ 
-   exp = original
 
-   original_values = read_list(exp)
-   original_names = read_names(exp)
+   original_values = read_list(original)
+   original_names = read_names(original)
    remaining_cluster,rejected_genes = read_cluster(cluster,top_label,rejected_genes)
    for name in original_names:
       if any(name in s for s in remaining_cluster):
