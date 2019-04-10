@@ -32,6 +32,29 @@ def transform(x,y,z,affine):
 	A = np.linalg.inv(M)
 	return np.round(A.dot([x,y,z,1]),decimals=0)
 
+def create_base_path(image,mode="expression"):
+	"""
+	Creates base path structure for temporary files like mirrored data files, experiment averages and mask files.
+	"""
+	#/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_669_200um/Mef2c_P56_sagittal_669_200um_2dsurqec.nii.gz
+	#/var/tmp/similarity/ABI-expression-data/...
+	if not os.path.exists("/var/tmp/similarity"): os.makedirs("/var/tmp/similarity")
+	if mode == "expression" and not os.path.exists("/var/tmp/similarity/ABI-expression-data"):
+		os.makedirs("/var/tmp/similarity/ABI-expression-data")
+	if mode == "connectivity" and not os.path.exists("/var/tmp/similarity/ABI-connectivity-data"):
+		os.makedirs("/var/tmp/similarity/ABI-connectivity-data")
+	base = "/var/tmp/similarity"
+	path = os.path.dirname(image)  #/usr/share/ABI-expression-data/Mef2c/Mef2c_P56_sagittal_669_200um/
+	path = os.path.normpath(path)
+	folders = path.split(os.sep)
+	exp = folders.pop()
+	gene = folders.pop()
+	mode = folders.pop()
+
+	if not os.path.exists(os.path.join(base,mode,gene)): os.makedirs(os.path.join(base,mode,gene))
+	return os.path.join(base,mode,gene)
+
+
 def mirror_sagittal(image):
 	"""
 	Sagittal datasets form Allen mouse brain are only collected for one hemisphere.
@@ -84,7 +107,8 @@ def mirror_sagittal(image):
 
 	img_average = nibabel.Nifti1Image(img_data,img.affine)
 	filename = str.split(os.path.basename(image),'.nii')[0] + '_mirrored.nii.gz'
-	path_to_mirrored = os.path.join(os.path.dirname(image),filename)
+	base_path = create_base_path(image)
+	path_to_mirrored = os.path.join(base_path,filename)
 	nibabel.save(img_average,path_to_mirrored)
 
 	return path_to_mirrored
@@ -118,7 +142,9 @@ def create_mask(image,threshold,mask = "/usr/share/mouse-brain-atlases/dsurqec_2
 		raise ValueError("Template mask {} and image file {} are not of the same shape".format(mask,image))
 	img_data[np.logical_and(img_data > threshold,atlas_mask == 1)] = 1
 	img_data[np.logical_or(img_data <= threshold,atlas_mask==0)] = 0
-	img_out = str.split(image,'.nii')[0] + '_mask.nii.gz'
+	base_path = create_base_path(image)
+	img_out = str.split(os.path.basename(image),'.nii')[0] + '_mask.nii.gz'
+	img_out = os.path.join(base_path,img_out)
 	img_mask = nibabel.Nifti1Image(img_data,img.affine)
 	nibabel.save(img_mask,img_out)
 
@@ -261,8 +287,9 @@ def create_experiment_average(imgs,strategy='max'):
 		average_img[np.isnan(average_img)] = -1
 
 	filename = str.split(os.path.basename(imgs[0]),"_")[0] + "_experiments_" + strategy + "_average.nii.gz"
-	path_to_exp_average = os.path.join(os.path.dirname(imgs[0]),"..")
-	path_to_exp_average = os.path.join(path_to_exp_average,filename)
+	base_path = create_base_path(imgs[0])
+	#path_to_exp_average = os.path.join(os.path.dirname(imgs[0]),"..")
+	path_to_exp_average = os.path.join(base_path,filename)
 	img_average = nibabel.Nifti1Image(average_img,img[0].affine)
 	nibabel.save(img_average,path_to_exp_average)
 	return path_to_exp_average
