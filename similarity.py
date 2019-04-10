@@ -15,7 +15,7 @@ import pandas as pd
 from scipy.stats import ttest_1samp
 from mne.stats import permutation_t_test
 from nipype.interfaces.base import CommandLine
-
+import time
 
 def transform(x,y,z,affine):
 	"""
@@ -63,7 +63,7 @@ def mirror_sagittal(image):
 	right_side = np.copy(img_data[0:mid,:,:])
 	right_side = np.flip(right_side,0)
 
-#TODO: checkec for case 3, test for other cases as well
+	#TODO: checkec for case 3, test for other cases as well
 	#replace
 	if np.shape(left_side)[0] > np.shape(img_data[0:mid,:,:])[0]:
 		#case 1: origin slightly to the left (or right??), need to trim left_side to the size of the right side
@@ -89,30 +89,33 @@ def mirror_sagittal(image):
 
 	return path_to_mirrored
 
-def create_mask(image,threshold):
+def create_mask(image,threshold,mask = "/usr/share/mouse-brain-atlases/dsurqec_200micron_mask.nii"):
 	"""
-	Creates and saves a binary mask file.
+	Creates and saves a binary mask file. Image will be masked according to threshold and the file dsurqec_200micron_mask.nii serves as boundary.
 
 	Parameters
 	----------
 	image: str
 		Path to NIfTI image.
-	threshold: int or float
+	threshold: int or float or None
 		threshold used for mask creation. All voxels equal or below threshold will be mapped to a value of zero,
-		all voxels above threshold will be mapped to a value of one.
+		all voxels above threshold will be mapped to a value of one. If None, dsurqec_200micron_mask.nii file will be used as mask.
 
 	Returns
 	---------
 	img_out: str
 		Path to the mask in NIfTI format.
 	"""
-	mask_img = nibabel.load("/usr/share/mouse-brain-atlases/dsurqec_200micron_mask.nii")
+
+	if threshold is None: return mask
+
+	mask_img = nibabel.load(mask)
 	atlas_mask = mask_img.get_fdata()
 
 	img = nibabel.load(image)
 	img_data = img.get_fdata()
-	#TODO: ensure shape mathces
-	#TODO: also check that there are no values between -1 and 0 that would now not be masked
+	if np.shape(img_data) != np.shape(atlas_mask):
+		raise ValueError("Template mask {} and image file {} are not of the same shape".format(mask,image))
 	img_data[np.logical_and(img_data > threshold,atlas_mask == 1)] = 1
 	img_data[np.logical_or(img_data <= threshold,atlas_mask==0)] = 0
 	img_out = str.split(image,'.nii')[0] + '_mask.nii.gz'
@@ -133,7 +136,7 @@ def get_energy_density(id):
 	Parameters
 	----------
 	id: int
-		Unique DataSetIF used by ABI to identfy experiment
+		Unique DataSetID used by ABI to identify experiment
 
 	Returns
 	---------
@@ -143,7 +146,6 @@ def get_energy_density(id):
 	density: float
 		Density level for a given gene. This value denotes the fraction of voxels that show gene expression.
 	"""
-	#TODO: put that into the ABI-expression folder for a new version ??
 	path = "/usr/share/ABI-expression-data/density_energy.csv"
 	tb = pd.read_csv(path,delimiter = ',')
 	col = tb[tb.id == id]
@@ -168,7 +170,6 @@ def check_expression_level_dataset(imgs):
 	surviving_imgs: list of str
 		paths to all NIfTI files to be used to create the average expression map.
 	"""
-	#TODO:what to do about 2 datasets??
 	en = dict()
 	dens = dict()
 	surviving_imgs = list()
@@ -192,11 +193,11 @@ def check_expression_level_dataset(imgs):
 				sur = imgs[index]
 				kicked_out.append(sur)
 	else:
-		arbitrary_cut_off = 0.5
-		if (abs(res[0] - res[1]) > 1) and (min(res) < arbitrary_cut_off):
+		cut_off = 0.5
+		if (abs(res[0] - res[1]) > 1) and (min(res) < cut_off):
 
 			for key_id in en:
-				if en[key_id] < arbitrary_cut_off:
+				if en[key_id] < cut_off:
 					index = [i for i, s in enumerate(imgs) if "_" + str(key_id) + "_" in s][0]
 					sur = imgs[index]
 					kicked_out.append(sur)
@@ -213,7 +214,7 @@ def check_expression_level_dataset(imgs):
 
 def create_experiment_average(imgs,strategy='max'):
 	"""
-	In case of several datasets present for one gene, experiment average is calculated, and 
+	In case of several datasets present for one gene, experiment average is calculated, and
 	experiment average is saved as NIfTI file.
 	Datasets that show significantly less expression are filtered out.
 
@@ -222,7 +223,7 @@ def create_experiment_average(imgs,strategy='max'):
 	imgs: list of str
 		paths to NIfTI files to be used to create an average map.
 	strategy: str {mean,max}
-		strategy to be used to create the average. 
+		strategy to be used to create the average.
 		mean: the mean expression level of all files will be used, values of -1 will be ignored
 		max: the maximum expression level of all files will be used
 
@@ -235,7 +236,7 @@ def create_experiment_average(imgs,strategy='max'):
 	imgs = check_expression_level_dataset(imgs)
 
 	#only one surviving dataset
-	if len(imgs) == 1 : 
+	if len(imgs) == 1 :
 		return imgs[0]
 
 	img_data = []
@@ -308,9 +309,9 @@ def ants_measure_similarity(fixed_image,moving_image,mask_gene = None,mask_map =
 	try:
 		sim_res = sim.run()
 		res = sim_res.outputs.similarity
-	#TODO:well...
+	#TODO:Better error handling?
 	except:
-		print("something happened?")
+		print("Not able to calculate similarity value for {}. Similarity is set to 0".format(moving_image))
 		res = 0
 	return res
 
@@ -338,13 +339,15 @@ def _plot(dis,stat_map,vs):
 
 #TODO:this temp save fig with the same file name is an issue if i let scirpt run parallel
 	main.imshow(plt.imread("_stat.png"))
-	ax_1.imshow(plt.imread("0.png"))
-	ax_2.imshow(plt.imread("1.png"))
-	ax_3.imshow(plt.imread("2.png"))
+	try:
+		ax_1.imshow(plt.imread("0.png"))
+		ax_2.imshow(plt.imread("1.png"))
+		ax_3.imshow(plt.imread("2.png"))
+	except FileNotFoundError:
+		print("")
 	plt.savefig(fig_name_prefix + "_all.png",dpi=600)
 
 #TODO: parameterize thresh_percentile and absolute threshold (???)
-#TODO: maybe use the same cut coords for all plots, may prove difficult bc not possbile to use nilearns func directly
 
 def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-atlases/ambmc2dsurqec_15micron_masked.obj",comparison='gene',vs = "expression",path_to_genes="usr/share/ABI-expression-data",percentile_threshold=94):
 	"""
@@ -364,33 +367,29 @@ def plot_results(stat_map,results,hits = 3, template = "/usr/share/mouse-brain-a
 	
 
 	"""
-	# TODO: put into stat3D or stat, to avoid loading the data twice threshold = fast_abs_percentile(stat_map)
 	dis = dict()
 	img_s = nibabel.load(stat_map)
 	img_data_s = img_s.get_fdata()
 	tresh_s = fast_abs_percentile(img_data_s[img_data_s >0],percentile=percentile_threshold)
-	print(tresh_s)
 	display_stat = maps.stat3D(stat_map,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as= '_stat.png',threshold=tresh_s,positive_only=True,figure_title=os.path.basename(stat_map))
 	dis["main"] = display_stat
+	if hits > len(results): hits = len(results) 
 	for i in range(0,hits):
+		#gene_name = results[i][0]
 		gene_name = results[i][0].split("_")[0] #TODO:this should work in both cases (also for connectivity??)
 		full_path_to_gene = results[i][1][1]  #TODO what ??????
-		print("now plotting: ")
-		print(full_path_to_gene)
 		img = nibabel.load(full_path_to_gene)
 		img_data = img.get_fdata()
 		tresh = fast_abs_percentile(img_data[img_data > 0],percentile=98)
 		display = maps.stat3D(full_path_to_gene,template="/usr/share/mouse-brain-atlases/dsurqec_200micron_masked.nii",save_as=str(i) + '.png',threshold=tresh,positive_only=True,figure_title=gene_name)
 		dis[str(i)] = display
 	_plot(dis,stat_map,vs)
-	print(tresh_s)
-	print(tresh)
 	#TODO:sep.function?
 
 	return
 
 
-def output_results(results,hits = 3,output_name=None):
+def output_results(results,hits = 3,output_name=None,output_path=None):
 	"""
 	saves sorted results of the similarity analysis into a .csv file
 	and prints top hits results to terminal
@@ -405,6 +404,7 @@ def output_results(results,hits = 3,output_name=None):
 	output_name: str
 		file name for output results
 	"""
+	if hits > len(results) : hits = len(results) 
 	print("Top " + str(hits) + " hits: ")
 	for i in range(0,hits):
 		try:
@@ -417,15 +417,21 @@ def output_results(results,hits = 3,output_name=None):
 		output_name =  "output_results.csv"
 	else:
 		output_name = output_name + ".csv"
+	
+	if output_path: output_name = os.path.join(output_path,output_name)
 
 	with open(output_name,'w') as f:
 		for i in range(0,len(results)):
-			f.write("%s,%s\n"%(results[i][0],results[i][1]))
+			name,id = results[i][0].split("_")
+			score = results[i][1][0]
+			path = results[i][1][1]
+			f.write("{},{},{},{}\n".format(name,id,score,path))
+
+	return output_name
 
 
-	return
 #TODO: sorted results: same score, sorting?? warning
-def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'gene',strategy='mean',percentile_threshold=94,mirror=True,flip=False,include = None,exclude=None):
+def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-expression-data",metric = 'MI',radius_or_number_of_bins = 64,comparison = 'experiment',strategy='mean',percentile_threshold=94,include = None,exclude=None,mask_threshold_map=None,mask_threshold_gene=-1,mask = "/usr/share/mouse-brain-atlases/dsurqec_200micron_mask.nii",out=None,plot=True,save_results=True):
 	"""
 	Run ANTs MeasureImageSimilarity for given input map against all gene expression patterns.
 
@@ -448,29 +454,34 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 		List of Gene IDs. If specified, similarity measure will only be run against those IDs given in list.
 	exclude: list of str or float,optional
 		List of Gene IDs. If specified, those ID will be excluded from similarity analysis.
-
-
+	out: str, optional
+		path for saving results and plots.
+	plot: bool, optional
+		Specifies if top hits should be plotted. Default is True.
 	"""
 
 	#TODO: if mirrored or mask files are already present, don't make them again
-#TODO:
-	#TODO: create a mask for the stat map? or userprovided? or both possible? Or use a single mask. Also, if yes, include threshold in mask func
-	#trehshold of -1 is good for the ABI-data, probably not the stat map
-	mask_map = create_mask(stat_map,-1)
-	#results = dict()
-	if "sagittal" in stat_map and mirror == True: stat_map = mirror_sagittal(stat_map)
+	mask_map = create_mask(stat_map,mask_threshold_map,mask=mask)
+	if "sagittal" in stat_map : stat_map = mirror_sagittal(stat_map)
 	results = defaultdict(list)
+
 	#loop through all gene folders, either get data form single experiment or get combined data.
 	if comparison == 'gene':
 		for dir in os.listdir(path_to_genes):
 			path = os.path.join(path_to_genes,dir)
 			if not os.path.isdir(path):continue
-			#print(path)
+
 			#multiple experiment data available per gene
 			if len(os.listdir(path)) > 1:
 					img = []
 					imgs = glob.glob(path + '/*/*_2dsurqec.nii.gz')
 					for img_gene in imgs:
+						if include is not None:
+							id = (os.path.basename(img_gene).split("_")[3])
+							if (id not in include) and (int(id) not in include):continue
+						if exlude is not None:
+							id = (os.path.basename(img_gene).split("_")[3])
+							if (id in exclude) or (int(id) in exclude):continue
 						if "sagittal" in img_gene and mirror == True:
 							 img.append(mirror_sagittal(img_gene))
 						else:
@@ -488,9 +499,6 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 			#TODO: catch unexpected errors as to not interrupt program, print genename
 			mask_gene = create_mask(img_gene,-1)
 			similarity = ants_measure_similarity(stat_map,img_gene,mask_gene = mask_gene,mask_map=mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
-			#similarity = nistats_compare(stat_map,img_gene)
-			print(stat_map,img_gene)
-			print(str(similarity))
 			results[dir].append(similarity)
 			results[dir].append(img_gene)
 
@@ -511,12 +519,10 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 					id = (os.path.basename(img_gene).split("_")[3])
 					if (id in exclude) or (int(id) in exclude):continue
 					#if (id not in include) and (int(id) not in include):continue
-				print("sth is in include")
 				if "sagittal" in img_gene: img_gene = mirror_sagittal(img_gene)
 				mask_gene = create_mask(img_gene,-1)
 				experiment_id = os.path.basename(img_gene).split("_")[3]
 				id = dir + "_" + experiment_id
-				print(i)
 				similarity = ants_measure_similarity(stat_map,img_gene,mask_gene = mask_gene,mask_map=mask_map,metric=metric,radius_or_number_of_bins=radius_or_number_of_bins)
 				i = i + 1
 				results[id].append(similarity)
@@ -526,7 +532,8 @@ def measure_similarity_expression(stat_map,path_to_genes="/usr/share/ABI-express
 	#TODO: if metric = MSE, sort other way round
 
 	sorted_results = sorted(results.items(),key=lambda x: x[1][0])
-	output_results(sorted_results,output_name="expression" + os.path.basename(stat_map), hits = 3)
+	if save_results == True: output_results(sorted_results,output_name="results_expression_{}".format(os.path.basename(stat_map)), hits = 3,output_path=out)
+	if plot==True: plot_results(stat_map,results,percentile_threshold=percentile_threshold)
 
 	return results
 
@@ -607,11 +614,10 @@ def main():
 #img = "/usr/share/ABI-connectivity-data/Primary_motor_area-584903636/P79_coronal_584903636_200um_projection_density_2dsurqec.nii.gz"
 # res = ants_measure_similarity("/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_sagittal_79677145_200um/Mef2c_P56_sagittal_79677145_200um_2dsurqec.nii.gz","/home/gentoo/src/abi2dsurqec_geneexpression/ABI_geneexpression_data/Mef2c/Mef2c_P56_coronal_79567505_200um//Mef2c_P56_coronal_79567505_200um_2dsurqec.nii.gz")
 	#	print(res)
-	measure_similarity_expression(img,metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
 #	measure_similarity_expression("/home/gentoo/ABI_data_full/data/Tlx2/Tlx2_P56_sagittal_81655554_200um/Tlx2_P56_sagittal_81655554_200um_2dsurqec_mirrored.nii.gz",metric = 'MI',path_to_genes="/home/gentoo/ABI_data_full/data",radius_or_number_of_bins = 64,comparison = 'gene')
 
 	#measure_similarity_connectivity(img,metric = 'MI',radius_or_number_of_bins = 64)
-	#measure_similarity_expression(img,metric='MI',percentile_threshold=args.percentile_threshold)
+	measure_similarity_expression(img,path_to_genes="small_dataset_exp",metric='MI')
 
 #	measure_similarity_expression("/usr/share/ABI-expression-data/Kat6a/Kat6a_P56_sagittal_71764326_200um/Kat6a_P56_sagittal_71764326_200um_2dsurqec_mirrored.nii.gz",metric = 'GC',radius_or_number_of_bins = 64,comparison = 'experiment')
 	#measure_similarity_expression(img,comparison = "experiment",exclude = [71489813],include = [79677145,71489813])
