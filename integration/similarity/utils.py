@@ -260,7 +260,7 @@ def create_experiment_average(imgs,strategy='max'):
 	path_to_exp_average: str
 		path to the created experiment average NIfTI file
 	"""
-
+	print(imgs)
 	imgs = check_expression_level_dataset(imgs)
 
 	#only one surviving dataset
@@ -445,17 +445,13 @@ def output_results(results,hits = 3,output_name=None,output_path=None):
 	if output_name is None:
 		output_name =  "output_results.csv"
 	else:
-		output_name = output_name + ".csv"
+		output_name = output_name
 	
 	if output_path: output_name = os.path.join(output_path,output_name)
 
 	with open(output_name,'w') as f:
 		for i in range(0,len(results)):
-			try:
-				name,id = results[i][0].split("_")
-			except:
-				name = results[i][0]
-				id = "avg"
+			name,id = results[i][0].split("_")
 			score = results[i][1][0]
 			path = results[i][1][1]
 			f.write("{},{},{},{}\n".format(name,id,score,path))
