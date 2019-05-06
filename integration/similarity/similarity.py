@@ -32,9 +32,9 @@ def _plot(dis,stat_map,vs):
 
 	main.imshow(plt.imread("_stat.png"))
 	try:
-		ax_1.imshow(plt.imread("0.png"))
+		ax_1.imshow(plt.imread("2.png"))
 		ax_2.imshow(plt.imread("1.png"))
-		ax_3.imshow(plt.imread("2.png"))
+		ax_3.imshow(plt.imread("0.png"))
 	except FileNotFoundError:
 		pass
 	plt.savefig(fig_name_prefix + "_all.png",dpi=600)
